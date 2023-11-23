@@ -12,8 +12,8 @@ Have fun, if you are keen to playing around with it.
 In folder s3_image_resizing you find code to start with AWS Lambda to build an automatic image resizing for an S3 bucket. Please complete following:
 
 * Create S3 bucket, SQS queue, IAM roles and dummy Lambda. There are 2 ways
-** You can use CDK app in folder `cdk_s3_image_resizing`
-** Alternatively you can use AWS Cloud Formation together with `cfn_s3_image_resizing.yaml`
+  * You can use CDK app in folder `cdk_s3_image_resizing`
+  * Alternatively you can use AWS Cloud Formation together with `cfn_s3_image_resizing.yaml`
 * Please implement the image resizing in Lambda code in subproject `cdk_s3_image_resizing\lambda`
 
 
