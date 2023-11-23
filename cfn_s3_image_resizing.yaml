@@ -1,0 +1,332 @@
+Resources:
+  s3s3uploaddlq3DF1B1C2:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      MessageRetentionPeriod: 604800
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/s3_s3_upload_dlq/Resource
+  s3uploadqueue50AAFCBB:
+    Type: 'AWS::SQS::Queue'
+    Properties:
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt 
+          - s3s3uploaddlq3DF1B1C2
+          - Arn
+        maxReceiveCount: 1
+      VisibilityTimeout: 720
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/s3_upload_queue/Resource
+  s3uploadqueuePolicy8D88C2EE:
+    Type: 'AWS::SQS::QueuePolicy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: 'sqs:SendMessage'
+            Condition:
+              ArnEquals:
+                'aws:SourceArn': !Ref uploadtopicF6D14166
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Resource: !GetAtt 
+              - s3uploadqueue50AAFCBB
+              - Arn
+        Version: 2012-10-17
+      Queues:
+        - !Ref s3uploadqueue50AAFCBB
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/s3_upload_queue/Policy/Resource
+  s3uploadqueuecdks3imageresizinguploadtopic3C7185FF20559A06:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      Protocol: sqs
+      TopicArn: !Ref uploadtopicF6D14166
+      Endpoint: !GetAtt 
+        - s3uploadqueue50AAFCBB
+        - Arn
+      RawMessageDelivery: true
+    DependsOn:
+      - s3uploadqueuePolicy8D88C2EE
+    Metadata:
+      'aws:cdk:path': >-
+        cdk-s3-image-resizing/s3_upload_queue/cdks3imageresizinguploadtopic3C7185FF/Resource
+  S3UploadBucketEF2ED902:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      BucketName: !Join 
+        - ''
+        - - upload-bucket-
+          - !Ref 'AWS::AccountId'
+          - '-'
+          - !Ref 'AWS::Region'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/S3UploadBucket/Resource
+  S3ImageResizingLambdaServiceRole0C5A85B6:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 'sts:AssumeRole'
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+        - !Join 
+          - ''
+          - - 'arn:'
+            - !Ref 'AWS::Partition'
+            - ':iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/S3ImageResizingLambda/ServiceRole/Resource
+  S3ImageResizingLambdaServiceRoleDefaultPolicy17DA837B:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - 's3:DeleteObject'
+              - 's3:GetObject'
+              - 's3:PutObject'
+            Effect: Allow
+            Resource: !Join 
+              - ''
+              - - !GetAtt 
+                  - S3UploadBucketEF2ED902
+                  - Arn
+                - /*
+          - Action:
+              - 'sqs:ChangeMessageVisibility'
+              - 'sqs:DeleteMessage'
+              - 'sqs:GetQueueAttributes'
+              - 'sqs:GetQueueUrl'
+              - 'sqs:ReceiveMessage'
+            Effect: Allow
+            Resource: !GetAtt 
+              - s3uploadqueue50AAFCBB
+              - Arn
+        Version: 2012-10-17
+      PolicyName: S3ImageResizingLambdaServiceRoleDefaultPolicy17DA837B
+      Roles:
+        - !Ref S3ImageResizingLambdaServiceRole0C5A85B6
+    Metadata:
+      'aws:cdk:path': >-
+        cdk-s3-image-resizing/S3ImageResizingLambda/ServiceRole/DefaultPolicy/Resource
+  S3ImageResizingLambdaB3AA6F74:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          # from io import BytesIO
+          # from PIL import Image
+
+          client = boto3.client('s3')
+
+          def lambda_handler(event, context):
+              print(event)
+              try:
+                  
+                  for item in event['Records']:
+                      
+                      s3_event = json.loads(item['body'])
+                      
+                      if 'Event' in s3_event and s3_event['Event'] == 's3:TestEvent':
+                          print("Test Event")
+                          
+                      else:
+                          for item in s3_event['Records']:
+                              bucket = item['s3']['bucket']['name']
+                              key = item['s3']['object']['key']
+                              print(f"Lambda triggerd by upload of {bucket}/{key}")
+                                  
+              except Exception as exception:
+                  print(exception)
+      Role: !GetAtt 
+        - S3ImageResizingLambdaServiceRole0C5A85B6
+        - Arn
+      Description: S3 image resizing
+      Handler: handler.handler
+      MemorySize: 512
+      Runtime: python3.9
+      Timeout: 120
+    DependsOn:
+      - S3ImageResizingLambdaServiceRoleDefaultPolicy17DA837B
+      - S3ImageResizingLambdaServiceRole0C5A85B6
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/S3ImageResizingLambda/Resource
+  S3ImageResizingLambdaEventInvokeConfig6F2973A1:
+    Type: 'AWS::Lambda::EventInvokeConfig'
+    Properties:
+      FunctionName: !Ref S3ImageResizingLambdaB3AA6F74
+      Qualifier: $LATEST
+      MaximumEventAgeInSeconds: 720
+      MaximumRetryAttempts: 1
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/S3ImageResizingLambda/EventInvokeConfig/Resource
+  S3ImageResizingLambdaSqsEventSourcecdks3imageresizings3uploadqueue35327AD9ABB10D91:
+    Type: 'AWS::Lambda::EventSourceMapping'
+    Properties:
+      FunctionName: !Ref S3ImageResizingLambdaB3AA6F74
+      EventSourceArn: !GetAtt 
+        - s3uploadqueue50AAFCBB
+        - Arn
+    Metadata:
+      'aws:cdk:path': >-
+        cdk-s3-image-resizing/S3ImageResizingLambda/SqsEventSource:cdks3imageresizings3uploadqueue35327AD9/Resource
+  uploadtopicF6D14166:
+    Type: 'AWS::SNS::Topic'
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/upload_topic/Resource
+  uploadtopicPolicy51392B1F:
+    Type: 'AWS::SNS::TopicPolicy'
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action: 'sns:Publish'
+            Condition:
+              ArnLike:
+                'aws:SourceArn': !GetAtt 
+                  - S3UploadBucketEF2ED902
+                  - Arn
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Resource: !Ref uploadtopicF6D14166
+            Sid: '0'
+        Version: 2012-10-17
+      Topics:
+        - !Ref uploadtopicF6D14166
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/upload_topic/Policy/Resource
+  CDKMetadata:
+    Type: 'AWS::CDK::Metadata'
+    Properties:
+      Analytics: >-
+        v2:deflate64:H4sIAAAAAAAA/2VRTU/DMAz9Lbun3sYE4gibQEICUTruU5ZmXWibhDopmqL+d/Ix1lVcYr/nZ/sluYH7W3CLGf3BjJV11og9uK2hrCae2jn8RnAflltONgeZknjmqhHsdCETHAhKr9/aPbJOaCOUDIoJ/lRasMCmJJ7jsCvoh63ArS2ruQmlc5bC2DHBCawp8oEI2oIrVBOdxzg2jRt2FJEbhMcQSEPbfUnBecmzlSwafuq5NC+yVzXfKHkQVRjwn4zMVtmO8TeqtZCjbsIOpFEVwquqCm580a8YyMaiUW3BMSqj4Us+KeWd6kXJOxL9+o+qwqLrxndrtI0P5o2VIs1fZLTRRwqL2cP5p+chputm+mSOSp4leQR/tx9IwvMVLJdwN/tCIbLOetsthyLFX8ls00tEAgAA
+    Metadata:
+      'aws:cdk:path': cdk-s3-image-resizing/CDKMetadata/Default
+    Condition: CDKMetadataAvailable
+Outputs:
+  UploadFileToS3Example:
+    Description: Upload a file to S3 (using AWS CLI) to trigger the SQS chain
+    Value: !Join 
+      - ''
+      - - 'aws s3 cp <local-path-to-file> s3://upload-bucket-'
+        - !Ref 'AWS::AccountId'
+        - '-'
+        - !Ref 'AWS::Region'
+        - /
+  UploadSqsQueueUrl:
+    Description: Link to the SQS Queue triggered on S3 uploads
+    Value: !Ref s3uploadqueue50AAFCBB
+  LambdaFunctionName:
+    Value: !Ref S3ImageResizingLambdaB3AA6F74
+Conditions:
+  CDKMetadataAvailable: !Or 
+    - !Or 
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - af-south-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - ap-east-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - ap-northeast-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - ap-northeast-2
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - ap-south-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - ap-southeast-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - ap-southeast-2
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - ca-central-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - cn-north-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - cn-northwest-1
+    - !Or 
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - eu-central-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - eu-north-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - eu-south-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - eu-west-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - eu-west-2
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - eu-west-3
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - me-south-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - sa-east-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - us-east-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - us-east-2
+    - !Or 
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - us-west-1
+      - !Equals 
+        - !Ref 'AWS::Region'
+        - us-west-2
+Parameters:
+  BootstrapVersion:
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /cdk-bootstrap/hnb659fds/version
+    Description: >-
+      Version of the CDK Bootstrap resources in this environment, automatically
+      retrieved from SSM Parameter Store. [cdk:skip]
+Rules:
+  CheckBootstrapVersion:
+    Assertions:
+      - Assert: !Not 
+          - 'Fn::Contains':
+              - - '1'
+                - '2'
+                - '3'
+                - '4'
+                - '5'
+              - !Ref BootstrapVersion
+        AssertDescription: >-
+          CDK bootstrap stack version 6 required. Please run 'cdk bootstrap'
+          with a recent version of the CDK CLI.

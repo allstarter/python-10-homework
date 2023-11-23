@@ -1,0 +1,9 @@
+-e .
+boto3
+botocore
+Pillow
+docker
+pytest==7.0.1
+aws-cdk-lib==2.85.0
+aws-cdk.aws-lambda-python-alpha
+constructs>=10.0.0,<11.0.0
